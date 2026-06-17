@@ -11,11 +11,10 @@ dp = Dispatcher()
 
 dp.include_router(start_router)
 
-#Налаштовуємо вивід инфо.в когсоль
-
 async def main():
     logging.basicConfig(level=logging.INFO)
-    await dp.start_polling()
+    await dp.start_polling(bot)
+
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
+    asyncio.run(main())
