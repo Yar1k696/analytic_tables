@@ -3,112 +3,123 @@ import re
 
 
 def get_clean_table_url(url_scv: str) -> str:
-    if 'docs.google.com/spreadsheets' in url_scv:
-        return url_scv.split('/edit')[0] + '/export?format=csv'
-    else:
+    # Якщо це посилання на публікацію (вже містить /pub), його міняти НЕ ТРЕБА!
+    if '/pub' in url_scv:
         return url_scv
 
+    # Якщо це звичайне робоче посилання з браузера, чистимо його як зазвичай
+    if 'docs.google.com/spreadsheets' in url_scv and '/edit' in url_scv:
+        return url_scv.split('/edit')[0] + '/export?format=csv'
 
-'''ОЧИЩУЄМ ВІД ПУСТИХ РЯДКІВ І СТОВБЦІВ'''
+    return url_scv
+
 
 def load_and_clean_table(url_scv: str) -> pd.DataFrame:
-
     df = pd.read_csv(get_clean_table_url(url_scv))
-
-    df = df.dropna(axis=0 , how='all')
-    df = df.dropna(axis=1 , how='all')
+    # Прибираємо повністю пусті рядки та колонки
+    df = df.dropna(axis=0, how='all')
+    df = df.dropna(axis=1, how='all')
     return df
 
 
-'''Виводим всі колонки'''
-
-def all_column(url_scv: str):
-    df = pd.read_csv(url_scv, nrows=0)
-
+def all_column(df: pd.DataFrame) -> list:
+    """Просто повертає список колонок із вже завантаженого DataFrame"""
     return df.columns.tolist()
 
 
+def parse_date_universal(date_input):
+    """
+    Супер-універсальна функція для розпізнавання дат.
+    Перетворює будь-який формат (2026.05.25, 25.05.2026, 2026-05-25, 25/05/2026)
+    у чистий об'єкт дати Python.
+    """
+    if pd.isna(date_input):
+        return None
 
-'''робим дату в одном форматі'''
+    # Перетворюємо в рядок і прибираємо зайві пробіли
+    date_str = str(date_input).strip()
 
+    # Замінюємо всі можливі роздільники (крапки, косі риски) на дефіси
+    normalized_str = re.sub(r"[./]", "-", date_str)
 
-def normalize_date_format(user_date: str) -> str:
-    return re.sub(r"[./]", "-", user_date)
+    # Список форматів, які ми намагаємось примусово перевірити
+    formats_to_try = [
+        "%d-%m-%Y",  # 25-05-2026 (День першим)
+        "%Y-%m-%d",  # 2026-05-25 (Рік першим)
+        "%m-%d-%Y"  # На всяк випадок американський
+    ]
 
+    for fmt in formats_to_try:
+        try:
+            return pd.to_datetime(normalized_str, format=fmt).date()
+        except (ValueError, TypeError):
+            continue
 
-'''иводим інфо. по даті'''
-'''Безопасно фильтрует DataFrame по введенной пользователем дате'''
-
-
-def info_data(df: pd.DataFrame, user_input: str) -> pd.DataFrame:
-    columns_name = ['Date', 'date', 'дата', 'Дата']
-    clean_input = normalize_date_format(user_input)
+    # Якщо жорсткі формати не спрацювали — вмикаємо «розумне» автовизначення Pandas
     try:
-        target_date = pd.to_datetime(clean_input, dayfirst=True).date()
-        for col in columns_name:
-            if col in df.columns:
-                df_copy = df.copy()
-                df_copy[col] = pd.to_datetime(df_copy[col], dayfirst=True).dt.date
-                return df_copy[df_copy[col] == target_date]
+        return pd.to_datetime(date_str, dayfirst=True, errors='coerce').date()
     except Exception:
-        return df
+        return None
 
 
-'''РОБИМО Ф-ЦІЇ .loc '''
+def info_data(df: pd.DataFrame, user_date: str) -> pd.DataFrame:
+    """Безпечно фільтрує DataFrame за будь-яким форматом дати"""
+    # 1. Парсимо дату, яку ввів користувач
+    converted_user_date = parse_date_universal(user_date)
+
+    # Якщо користувач ввів текст або дурницю, яку неможливо розпізнати
+    if converted_user_date is None:
+        return pd.DataFrame()
+
+    # 2. Шукаємо колонку 'Дата' (ігноруючи регістр великих/малих літер)
+    found_date_col = None
+    for col in df.columns:
+        if str(col).strip().lower() == 'дата':
+            found_date_col = col
+            break
+
+    # 3. Якщо знайшли колонку — універсально парсимо КОЖЕН рядок у таблиці
+    if found_date_col:
+        # Створюємо тимчасову копію колонки, де всі дати приведені до єдиного типу через наш супер-парсер
+        temp_date_series = df[found_date_col].apply(parse_date_universal)
+
+        # Фільтруємо оригінальний df за допомогою маски
+        filtered_df = df[temp_date_series == converted_user_date]
+        return filtered_df
+
+    return pd.DataFrame()
 
 
 def select_age_columns(df: pd.DataFrame, user_input: str, operator: str) -> pd.DataFrame:
     columns_age = ['год', 'рік', 'вік', 'возраст', 'age']
-    columns_name = ['имя', 'ім\'я', 'name', 'фио', 'піб', 'сотрудник', 'працівник', 'user', 'fio']
-
     found_age_col = None
-    found_name_col = None
 
-    # Беремо колонки з df виводимо в список
-    actual_columns = df.columns.tolist()
-    clean_input = user_input.lower()
+    for real_col in df.columns:
+        if str(real_col).strip().lower() in columns_age:
+            found_age_col = real_col
+            break
 
-    for col_age in columns_age:
-        if col_age in actual_columns:
-            found_age_col = col_age
+    if found_age_col is None:
+        return pd.DataFrame()
 
-    for col_name in columns_name:
-        if col_name in df.columns:
-            found_name_col = col_name
-
-    age_number = int(clean_input)
-
-    if operator == '>=':
-        adult_names = df.loc[df[found_age_col] >= age_number, found_name_col]
-        return adult_names
-
-
-    elif operator == '<=':
-        adult_names = df.loc[df[found_age_col] <= age_number, found_name_col]
-        return adult_names
-
-    elif operator == '==':
-        adult_names = df.loc[df[found_age_col] == age_number, found_name_col]
-        return adult_names
-    return df
-
-
-'''РОБИМО Ф-ЦІЇ .iloc '''
-
-
-def select_row_col(df: pd.DataFrame, user_input: str, ) -> pd.DataFrame:
     try:
-        select_row_col = df.columns.tolist()
+        age_number = int(user_input.strip())
+        # Робимо копію, щоб не міняти оригінал
+        df_clean = df.copy()
+        df_clean[found_age_col] = pd.to_numeric(df_clean[found_age_col], errors='coerce').fillna(0).astype(int)
 
+        if operator == '>=': return df_clean[df_clean[found_age_col] >= age_number]
+        if operator == '<=': return df_clean[df_clean[found_age_col] <= age_number]
+        if operator == '==': return df_clean[df_clean[found_age_col] == age_number]
+    except:
+        return pd.DataFrame()
+    return pd.DataFrame()
+
+
+def select_row_col(df: pd.DataFrame, user_input: str) -> pd.DataFrame:
+    try:
         start_r, end_r, start_c, end_c = user_input.split(' ')
-
-        row_start = int(start_r)
-        row_end = int(end_r)
-
-        col_start = int(start_c)
-        col_end = int(end_c)
-
-        result_df = df.iloc[row_start:row_end, col_start:col_end]
+        result_df = df.iloc[int(start_r):int(end_r), int(start_c):int(end_c)]
         return result_df
     except Exception:
         return df
