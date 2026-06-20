@@ -29,7 +29,7 @@ def all_column(df: pd.DataFrame) -> list:
 
 def parse_date_universal(date_input):
     """
-    Супер-універсальна функція для розпізнавання дат.
+    Суперуніверсальна функція для розпізнавання дат.
     Перетворює будь-який формат (2026.05.25, 25.05.2026, 2026-05-25, 25/05/2026)
     у чистий об'єкт дати Python.
     """
@@ -71,16 +71,19 @@ def info_data(df: pd.DataFrame, user_date: str) -> pd.DataFrame:
     if converted_user_date is None:
         return pd.DataFrame()
 
-    # 2. Шукаємо колонку 'Дата' (ігноруючи регістр великих/малих літер)
+    # 1. Створюємо список можливих назв для дат
+    date_variants = ['дата', 'date', 'число', 'dt', 'дата_рождения', 'дата народження']
+
     found_date_col = None
+    # 2. Шукаємо збіг
     for col in df.columns:
-        if str(col).strip().lower() == 'дата':
+        if str(col).strip().lower() in date_variants:
             found_date_col = col
             break
 
     # 3. Якщо знайшли колонку — універсально парсимо КОЖЕН рядок у таблиці
     if found_date_col:
-        # Створюємо тимчасову копію колонки, де всі дати приведені до єдиного типу через наш супер-парсер
+        # Створюємо тимчасову копію колонки, де всі дати приведені до єдиного типу через наш суперпарсер
         temp_date_series = df[found_date_col].apply(parse_date_universal)
 
         # Фільтруємо оригінальний df за допомогою маски
