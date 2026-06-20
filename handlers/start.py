@@ -14,7 +14,8 @@ router = Router()
 key_info = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text='ВИБІР ДІЙ')],
-        [KeyboardButton(text='Фільтр по віку')]
+        [KeyboardButton(text='Фільтр по віку')],
+        [KeyboardButton(text='Зріз таблиці')]
     ], resize_keyboard=True
 )
 
@@ -27,6 +28,7 @@ class TableState(StatesGroup):
     waiting_for_choice = State()
     waiting_for_operator = State() # чекаємо від користувача (>=, <=, ==),
     waiting_for_age = State() # Бот чекає ведення (віку)
+    waiting_for_range = State() # Очікування координат (наприклад: "0 10 0 2")
 
 
 
@@ -217,5 +219,47 @@ async def process_age(message: Message, state: FSMContext):
     # 3. Відправляємо звіт
     # Якщо звіт дуже довгий, він може викликати іншу помилку,
     # але зараз ми прибрали причину помилки "Unsupported start tag"
+    await message.answer(report, parse_mode="HTML", reply_markup=key_info)
+    await state.set_state(TableState.waiting_for_choice)
+
+
+@router.message(TableState.waiting_for_choice, F.text == 'Зріз таблиці')
+async def ask_for_range(message: Message, state: FSMContext):
+    await message.answer(
+        "✂️ <b>Режим зрізу таблиці</b>\n\n"
+        "Введіть 4 цифри через пробіл:\n"
+        "<code>рядки_від рядки_до кол_від кол_до</code>\n\n"
+        "<i>Пример: 0 5 2 5 (рядки 0-4, колонки 2-4)</i>",
+        parse_mode="HTML"
+    )
+    await state.set_state(TableState.waiting_for_range)
+
+
+@router.message(TableState.waiting_for_range)
+async def process_range(message: Message, state: FSMContext):
+    user_input = message.text
+    data = await state.get_data()
+    link = data.get('link')
+
+    # Завантажуємо таблицю
+    df = load_and_clean_table(link)
+
+    # Використовуємо твою універсальну функцію
+    result_df = select_row_col(df, user_input)
+
+    # Формуємо звіт безпечно через html.escape
+    report = f"✂️ <b>Результат зрізу:</b>\n\n"
+
+    if not result_df.empty:
+        for index, row in result_df.iterrows():
+            report += f"👤 <b>Рядок {index}</b>\n"
+            for col_name in result_df.columns:
+                val = row[col_name]
+                if pd.notna(val):
+                    report += f"🔹 <i>{html.escape(str(col_name))}:</i> {html.escape(str(val))}\n"
+            report += "──────────────────\n"
+    else:
+        report += "❌ Нічого не знайдено."
+
     await message.answer(report, parse_mode="HTML", reply_markup=key_info)
     await state.set_state(TableState.waiting_for_choice)
