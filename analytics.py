@@ -9,11 +9,24 @@ def get_clean_table_url(url_scv: str) -> str:
         return url_scv
 
 
-# Виводим всі колонки
+'''ОЧИЩУЄМ ВІД ПУСТИХ РЯДКІВ І СТОВБЦІВ'''
+
+def load_and_clean_table(url_scv: str) -> pd.DataFrame:
+
+    df = pd.read_csv(get_clean_table_url(url_scv))
+
+    df = df.dropna(axis=0 , how='all')
+    df = df.dropna(axis=1 , how='all')
+    return df
+
+
+'''Виводим всі колонки'''
 
 def all_column(url_scv: str):
     df = pd.read_csv(url_scv, nrows=0)
+
     return df.columns.tolist()
+
 
 
 '''робим дату в одном форматі'''
@@ -43,23 +56,21 @@ def info_data(df: pd.DataFrame, user_input: str) -> pd.DataFrame:
 
 '''РОБИМО Ф-ЦІЇ .loc '''
 
-def select_age_columns(df: pd.DataFrame, user_input: str, operator: str) -> pd.DataFrame:
 
+def select_age_columns(df: pd.DataFrame, user_input: str, operator: str) -> pd.DataFrame:
     columns_age = ['год', 'рік', 'вік', 'возраст', 'age']
     columns_name = ['имя', 'ім\'я', 'name', 'фио', 'піб', 'сотрудник', 'працівник', 'user', 'fio']
-
 
     found_age_col = None
     found_name_col = None
 
-    #Беремо колонки з df виводимо в список
+    # Беремо колонки з df виводимо в список
     actual_columns = df.columns.tolist()
     clean_input = user_input.lower()
 
     for col_age in columns_age:
         if col_age in actual_columns:
             found_age_col = col_age
-
 
     for col_name in columns_name:
         if col_name in df.columns:
@@ -82,3 +93,22 @@ def select_age_columns(df: pd.DataFrame, user_input: str, operator: str) -> pd.D
     return df
 
 
+'''РОБИМО Ф-ЦІЇ .iloc '''
+
+
+def select_row_col(df: pd.DataFrame, user_input: str, ) -> pd.DataFrame:
+    try:
+        select_row_col = df.columns.tolist()
+
+        start_r, end_r, start_c, end_c = user_input.split(' ')
+
+        row_start = int(start_r)
+        row_end = int(end_r)
+
+        col_start = int(start_c)
+        col_end = int(end_c)
+
+        result_df = df.iloc[row_start:row_end, col_start:col_end]
+        return result_df
+    except Exception:
+        return df
